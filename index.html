@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PocketSave - Real-Time Budget Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <header>
+        <div class="container header-content">
+            <h1>POCKET<span>SAVE</span></h1>
+            <nav>
+                <ul>
+                    <li><a href="index.html" class="active">HOME</a></li>
+                    <li><a href="about.html">ABOUT</a></li>
+                    <li><a href="services.html">FEATURES</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <div class="banner-section">
+        <div class="splash-decorator" aria-hidden="true"></div>
+        <div class="container">
+            <div class="hero">
+                <h2>YOUR COLLEGE CASHFLOW, SIMPLIFIED.</h2>
+                <p class="tagline">Log income and expenses instantly to see exactly where you stand, in real-time.</p>
+            </div>
+        </div>
+    </div>
+
+    <main class="container">
+        <div class="card">
+            <h3>FINANCIAL SNAPSHOT</h3>
+            <div class="stats-grid">
+                <div class="stat-box stat-income">
+                    <div class="label">Total Income</div>
+                    <div id="total-income" class="number">$0.00</div>
+                </div>
+                <div class="stat-box stat-expense">
+                    <div class="label">Total Expenses</div>
+                    <div id="total-expenses" class="number">$0.00</div>
+                </div>
+                <div class="stat-box stat-balance">
+                    <div class="label">Remaining Balance</div>
+                    <div id="remaining-balance" class="number">$0.00</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>QUICK ENTRY FORM</h3>
+            <form id="transaction-form" class="transaction-form">
+                <div class="form-group">
+                    <label for="description">Description</label>
+                    <input type="text" id="description" placeholder="E.g., Weekend Job, Ramen & Coffee" required>
+                </div>
+                <div class="form-group">
+                    <label for="amount">Amount ($)</label>
+                    <input type="number" id="amount" placeholder="50.00" required min="0.01" step="any">
+                </div>
+                <div class="form-group">
+                    <label for="category">Type</label>
+                    <select id="category" required>
+                        </select>
+                </div>
+                <button type="submit">LOG TRANSACTION</button>
+            </form>
+            
+            
+            <div id="category-management">
+                <h4>Manage Spending Categories</h4>
+                <form id="new-category-form">
+                    <input type="text" id="new-category-name" placeholder="Add New Category (e.g., 'Tuition')" required>
+                    <button type="submit">ADD</button>
+                </form>
+                <ul id="category-list">
+                    </ul>
+            </div>
+
+            <button id="reset-button" class="reset-button">CLEAR ALL DATA</button>
+        </div>
+        
+        <div class="card">
+            <h3>EXPENSE BREAKDOWN</h3>
+            <div style="height: 300px;"><canvas id="expenseChart"></canvas></div>
+        </div>
+
+        <div class="card">
+            <h3>TRANSACTION HISTORY</h3>
+            <ul id="transaction-list" class="transaction-list">
+                <li style="text-align: center; color: #666;">START TRACKING YOUR FIRST EXPENSE OR INCOME!</li>
+            </ul>
+        </div>
+
+    </main>
+
+    <footer>
+        <p>&copy; 2025 Pocketsave Project. A Bachelor of Computer Application project by Abdul Basith.</p>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+
+            const form = document.getElementById('transaction-form');
+            const categorySelect = document.getElementById('category');
+            const list = document.getElementById('transaction-list');
+            const incomeEl = document.getElementById('total-income');
+            const expensesEl = document.getElementById('total-expenses');
+            const balanceEl = document.getElementById('remaining-balance');
+            const resetButton = document.getElementById('reset-button');
+            const newCategoryForm = document.getElementById('new-category-form');
+            const categoryListEl = document.getElementById('category-list');
+
+            // --- Data Variables ---
+            let transactions = JSON.parse(localStorage.getItem('pocketSaveTransactions')) || [];
+            const defaultCategories = ['Income', 'Food', 'Rent', 'Utilities', 'Entertainment', 'Other'];
+            let customCategories = JSON.parse(localStorage.getItem('pocketSaveCategories')) || [];
+            let expenseChartInstance = null; 
+            
+            // --- Category Helper Function ---
+            function getAllCategories() {
+                return [...defaultCategories, ...customCategories];
+            }
+
+            // --- Category Management Functions ---
+
+            function saveCategories() {
+                localStorage.setItem('pocketSaveCategories', JSON.stringify(customCategories));
+            }
+
+            function renderCategoryManagement() {
+                categoryListEl.innerHTML = '';
+                
+                // Render fixed categories
+                defaultCategories.forEach(cat => {
+                    const li = document.createElement('li');
+                    li.textContent = cat;
+                    if (cat === 'Income') {
+                        li.style.backgroundColor = '#E8F5E9';
+                        li.style.borderColor = '#388E3C';
+                    }
+                    categoryListEl.appendChild(li);
+                });
+
+                // Render custom categories with delete buttons
+                customCategories.forEach(cat => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <span>${cat}</span>
+                        <button class="delete-category-btn" data-category="${cat}" aria-label="Delete ${cat} category">&times;</button>
+                    `;
+                    categoryListEl.appendChild(li);
+                });
+            }
+
+            function renderCategorySelect() {
+                categorySelect.innerHTML = '<option value="">Select Category</option>';
+                const allCategories = getAllCategories();
+                
+                allCategories.forEach(cat => {
+                    const option = document.createElement('option');
+                    option.value = cat;
+                    option.textContent = cat;
+                    categorySelect.appendChild(option);
+                });
+            }
+
+            // Helper function to combine rendering
+            function renderAllCategories() {
+                renderCategoryManagement();
+                renderCategorySelect();
+            }
+
+            // --- Core Budget App Functions ---
+
+            function deleteTransaction(id) {
+                transactions = transactions.filter(t => t.id !== id);
+                updateDOM();
+            }
+
+            function updateDOM() {
+                const totalIncome = transactions
+                    .filter(t => t.isIncome)
+                    .reduce((sum, t) => sum + t.amount, 0);
+
+                const totalExpenses = transactions
+                    .filter(t => !t.isIncome)
+                    .reduce((sum, t) => sum + t.amount, 0);
+
+                const remainingBalance = totalIncome - totalExpenses;
+
+                // Update Summary Elements
+                incomeEl.textContent = `$${totalIncome.toFixed(2)}`;
+                expensesEl.textContent = `$${totalExpenses.toFixed(2)}`;
+                balanceEl.textContent = `$${remainingBalance.toFixed(2)}`;
+                
+                balanceEl.parentElement.classList.remove('stat-income', 'stat-expense');
+                if (remainingBalance >= 0) {
+                     balanceEl.parentElement.classList.add('stat-income');
+                } else {
+                     balanceEl.parentElement.classList.add('stat-expense');
+                }
+
+                // --- CHART LOGIC START ---
+                
+                const expenseTotals = transactions
+                    .filter(t => !t.isIncome)
+                    .reduce((acc, t) => {
+                        const category = getAllCategories().includes(t.category) ? t.category : 'Other'; 
+                        acc[category] = (acc[category] || 0) + t.amount;
+                        return acc;
+                    }, {});
+
+                const chartLabels = Object.keys(expenseTotals);
+                const chartData = Object.values(expenseTotals);
+
+                const chartColors = [
+                    '#FFD700', '#1A1A1A', '#C62828', '#388E3C', '#00BCD4', '#FF9800'
+                ];
+                
+                if (expenseChartInstance) {
+                    expenseChartInstance.destroy();
+                }
+                
+                const ctx = document.getElementById('expenseChart');
+                if (chartData.length > 0 && ctx) {
+                    expenseChartInstance = new Chart(ctx.getContext('2d'), {
+                        type: 'doughnut',
+                        data: {
+                            labels: chartLabels,
+                            datasets: [{
+                                data: chartData,
+                                backgroundColor: chartLabels.map((_, i) => chartColors[i % chartColors.length]),
+                                borderColor: '#1A1A1A', 
+                                borderWidth: 2,
+                                hoverOffset: 10
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false, 
+                            plugins: {
+                                legend: { position: 'right', labels: { font: { family: 'Poppins', size: 12 }, color: '#1A1A1A' } },
+                                title: { display: false }
+                            }
+                        }
+                    });
+                } else if (ctx) {
+                     expenseChartInstance = new Chart(ctx.getContext('2d'), {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['No Data'],
+                            datasets: [{ data: [1], backgroundColor: ['#e0e0e0'], borderColor: '#1A1A1A', borderWidth: 2, hoverOffset: 4 }]
+                        },
+                         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } } }
+                    });
+                }
+
+                // --- CHART LOGIC END ---
+
+                // Update Transaction History List
+                list.innerHTML = '';
+                if (transactions.length === 0) {
+                    list.innerHTML = '<li style="text-align: center; color: #666;">START TRACKING YOUR FIRST EXPENSE OR INCOME!</li>';
+                    return;
+                }
+
+                [...transactions].reverse().forEach(t => {
+                    const listItem = document.createElement('li');
+                    const sign = t.isIncome ? '+' : '-';
+                    const amountClass = t.isIncome ? 'income' : 'expense';
+                    
+                    const displayCategory = getAllCategories().includes(t.category) ? t.category : 'Other (Category Deleted)';
+
+                    // Corrected structure to prevent overlay (relies on external CSS for flex layout)
+                    listItem.innerHTML = `
+                        <div class="transaction-details">
+                            <span>${t.description}</span>
+                            <span class="transaction-category">${displayCategory}</span>
+                        </div>
+                        <div style="display: flex; align-items: center;">
+                            <span class="transaction-amount ${amountClass}">
+                                ${sign}$${t.amount.toFixed(2)}
+                            </span>
+                            <button class="delete-transaction-btn" data-id="${t.id}" aria-label="Delete transaction">&times;</button>
+                        </div>
+                    `;
+                    list.appendChild(listItem);
+                });
+
+                localStorage.setItem('pocketSaveTransactions', JSON.stringify(transactions));
+            }
+
+            // --- Event Listeners ---
+
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+
+                const description = document.getElementById('description').value.trim();
+                const amountStr = document.getElementById('amount').value.trim();
+                const category = document.getElementById('category').value;
+
+                if (description === '' || amountStr === '' || category === '') {
+                    alert('Please fill out all fields.');
+                    return;
+                }
+
+                const amount = parseFloat(amountStr);
+                const isIncome = category === 'Income';
+
+                const newTransaction = {
+                    id: Date.now(),
+                    description,
+                    amount: amount,
+                    category,
+                    isIncome
+                };
+
+                transactions.push(newTransaction);
+                updateDOM();
+                form.reset();
+            });
+
+            // Listener for individual transaction deletion (Uses event delegation on the list)
+            list.addEventListener('click', (e) => {
+                if (e.target.classList.contains('delete-transaction-btn')) {
+                    const idToDelete = parseInt(e.target.dataset.id);
+                    if (confirm("Are you sure you want to delete this transaction?")) {
+                        deleteTransaction(idToDelete);
+                    }
+                }
+            });
+            
+            // Listener for Add New Category
+            newCategoryForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const newCatName = document.getElementById('new-category-name').value.trim();
+
+                if (newCatName && !getAllCategories().includes(newCatName)) {
+                    customCategories.push(newCatName);
+                    saveCategories();
+                    renderAllCategories();
+                    newCategoryForm.reset();
+                } else if (getAllCategories().includes(newCatName)) {
+                    alert('Category already exists!');
+                }
+            });
+            
+            // Listener for Delete Custom Category (Uses event delegation)
+            categoryListEl.addEventListener('click', (e) => {
+                if (e.target.classList.contains('delete-category-btn')) {
+                    const catToDelete = e.target.dataset.category;
+                    if (confirm(`Are you sure you want to delete the category "${catToDelete}"? Transactions associated with this category will remain, but categorized as 'Other'.`)) {
+                        customCategories = customCategories.filter(cat => cat !== catToDelete);
+                        saveCategories();
+                        renderAllCategories();
+                    }
+                }
+            });
+
+            // Listener for Clear All Data button
+            resetButton.addEventListener('click', () => {
+                const confirmReset = confirm("Are you sure you want to clear ALL transaction data? This cannot be undone.");
+                if (confirmReset) {
+                    transactions = [];
+                    localStorage.removeItem('pocketSaveTransactions');
+                    updateDOM();
+                }
+            });
+
+            // --- Initialization ---
+            renderAllCategories();
+            updateDOM();
+            
+        }); 
+    </script>
+</body>
+</html>
